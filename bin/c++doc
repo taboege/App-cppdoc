@@ -1,0 +1,30 @@
+#!/usr/bin/env perl
+
+use Modern::Perl;
+use Clang::Documentation;
+
+my $tu = read_with_documentation(shift // die 'need source file');
+
+sub dump_tree {
+    state $indent = 0;
+    my $cur = shift;
+
+    if (ref($cur) eq 'Clang::Unit') {
+        dump_tree($_) for $cur->cursor->children;
+        return;
+    }
+
+    return unless $cur->location->file;
+
+    say $cur->location, ">\t", (' ' x (4*$indent)), $cur->kind, ' ', $cur;
+    if ($cur->comment) {
+        say $cur->comment->html;
+        say '';
+    }
+
+    $indent++;
+        dump_tree($_) for $cur->children;
+    $indent--;
+}
+
+dump_tree $tu;
