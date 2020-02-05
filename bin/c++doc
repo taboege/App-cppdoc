@@ -1,30 +1,68 @@
 #!/usr/bin/env perl
 
 use Modern::Perl;
+use Pandoc::Elements;
+use Pandoc::Incremental;
 use Clang::Documentation;
 
-my $tu = read_with_documentation(shift // die 'need source file');
+# Common conversion patterns for single Clang::Cursors
+# with associated documentation.
+package Clang::Documentation::To::Pandoc {
+    use parent qw(Pandoc::Incremental);
 
-sub dump_tree {
-    state $indent = 0;
-    my $cur = shift;
+    sub _pandocify {
+        my $self = shift;
+        my $cursor = shift;
 
-    if (ref($cur) eq 'Clang::Unit') {
-        dump_tree($_) for $cur->cursor->children;
-        return;
+        if (ref($cursor) eq 'Clang::Cursor') {
+            no strict 'refs';
+            my $kind = $cursor->kind;
+            my $meth = "_pandocify_$kind";
+            say "dispatching to $meth";
+            return $self->$meth($cursor, @_);
+        }
+        warn "cannot pandocify @{[ ref($cursor) ]}";
+        return undef;
     }
 
-    return unless $cur->location->file;
-
-    say $cur->location, ">\t", (' ' x (4*$indent)), $cur->kind, ' ', $cur;
-    if ($cur->comment) {
-        say $cur->comment->html;
-        say '';
+    sub _pandocify_Namespace {
+        ...
     }
-
-    $indent++;
-        dump_tree($_) for $cur->children;
-    $indent--;
 }
 
-dump_tree $tu;
+sub walk_documentables {
+    my ($tu, $pandoc) = @_;
+
+    sub _walk {
+        my ($cur, $pandoc) = @_;
+        return unless $cur->location->file;
+
+        $pandoc->append(Para [ Str("$cur ("), Code(['', [], []], $cur->location), Str(")") ]);
+
+        _walk($_ => $pandoc) for $cur->children;
+    }
+
+    $pandoc->append(Header 1, ['', [], []], [ Str "". $tu ]);
+    for my $cur ($tu->cursor->children) {
+        # XXX: We can't get top-level documentation for a SYNOPSIS or so.
+        # Clang simply doesn't keep it around after preprocessing if it's
+        # not attached to a declaration.
+        #
+        # TODO: _walk should stop recursing at certain kinds of symbols,
+        # like function declarations. We don't care about stuff in
+        # the bodies.
+        say $cur->kind;
+        if ("". $cur->kind eq 'comment') {
+            say $cur;
+        }
+        else {
+            _walk($cur => $pandoc);
+        }
+    }
+    $pandoc
+}
+
+my $tu = documented_cpp(shift // die 'need source file');
+my $pandoc = Clang::Documentation::To::Pandoc->new;
+walk_documentables($tu => $pandoc);
+print $pandoc->document->to_markdown;

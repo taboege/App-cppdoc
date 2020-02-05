@@ -135,11 +135,18 @@ package Clang::Comment {
 
     $ffi->attach([ Comment_getKind => 'kind' ] => [ 'ClangComment' ] => 'enum');
     $ffi->attach([ FullComment_getAsHTML => '_html' ] => [ 'ClangComment' ] => 'ClangString');
+    $ffi->attach([ FullComment_getAsXML  => '_xml'  ] => [ 'ClangComment' ] => 'ClangString');
 
     sub html {
         my $self = shift;
         return '' unless $self;
         $self->_html
+    }
+
+    sub xml {
+        my $self = shift;
+        return '' unless $self;
+        $self->_xml
     }
 }
 
@@ -242,12 +249,15 @@ package Clang::Unit {
 
 package Clang::Documentation {
     use Exporter 'import';
-    our @EXPORT = qw(read_with_documentation);
+    our @EXPORT = qw(documented_cpp);
 
-    sub read_with_documentation {
+    sub documented_cpp {
         my $file = shift;
         my $index = Clang::Index->new;
-        my $tu = Clang::Unit->new($index => $file => '-Wdocumentation' => '-fparse-all-comments');
+        # -Wdocumentation: turn on warnings related to documentation commands.
+        # -fparse-all-comments: consider all comments documentation, not just
+        #   the doxygen-style ones.
+        Clang::Unit->new($index => $file => '-Wdocumentation', '-fparse-all-comments')
     }
 }
 
